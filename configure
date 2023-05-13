@@ -442,6 +442,7 @@ secret_keyring="$default_feature"
 libdaxctl="$auto"
 meson=""
 ninja=""
+cannoli=""
 skip_meson=no
 gettext="$auto"
 fuse="$auto"
@@ -1257,6 +1258,8 @@ for opt do
   ;;
   --with-coroutine=*) coroutine="$optarg"
   ;;
+  --with-cannoli=*) cannoli="$optarg"
+  ;;
   --disable-coroutine-pool) coroutine_pool="no"
   ;;
   --enable-coroutine-pool) coroutine_pool="yes"
@@ -1834,6 +1837,7 @@ Advanced options (experts only):
   --enable-malloc-trim     enable libc malloc_trim() for memory optimization
   --oss-lib                path to OSS library
   --cpu=CPU                Build for host CPU [$cpu]
+  --with-cannoli=/path/to/cannoli Build with fast Cannoli tracing support
   --with-coroutine=BACKEND coroutine backend. Supported options:
                            ucontext, sigaltstack, windows
   --enable-gcov            enable test coverage analysis with gcov
@@ -4800,6 +4804,12 @@ fi
 if [ "$bsd" = "yes" ] ; then
   echo "CONFIG_BSD=y" >> $config_host_mak
 fi
+
+if [ -n "$cannoli" ] ; then
+    echo "CONFIG_CANNOLI=y" >> $config_host_mak
+    QEMU_CFLAGS="-I$cannoli $QEMU_CFLAGS"
+fi
+
 
 if test "$qom_cast_debug" = "yes" ; then
   echo "CONFIG_QOM_CAST_DEBUG=y" >> $config_host_mak

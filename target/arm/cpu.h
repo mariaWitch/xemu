@@ -732,6 +732,13 @@ typedef struct CPUARMState {
     /* Linux syscall tagged address support */
     bool tagged_addr_enable;
 #endif
+
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 } CPUARMState;
 
 static inline void set_feature(CPUARMState *env, int feature)

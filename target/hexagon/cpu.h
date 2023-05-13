@@ -99,6 +99,13 @@ struct CPUHexagonState {
 
     target_ulong is_gather_store_insn;
     target_ulong gather_issued;
+    +
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 };
 
 #define HEXAGON_CPU_CLASS(klass) \

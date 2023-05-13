@@ -1161,6 +1161,12 @@ struct CPUMIPSState {
     QEMUTimer *timer; /* Internal timer */
     target_ulong exception_base; /* ExceptionBase input to the core */
     uint64_t cp0_count_ns; /* CP0_Count clock period (in nanoseconds) */
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif    
 };
 
 /**

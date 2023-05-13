@@ -34,6 +34,25 @@
 #include "tcg-target.h"
 #include "qemu/int128.h"
 #include "tcg/tcg-cond.h"
+/*
+ * Currently we only support Cannoli in qemu-user mode. In theory it would work
+ * in qemu-system, but it's kinda pointless if you don't have hooks/traces for
+ * context switches, page table changes, etc.
+ */
+#ifdef CONFIG_LINUX_USER
+#ifdef CONFIG_CANNOLI
+#define CANNOLI
+#ifdef CANNOLI
+#include "jitter/ffi/cannoli.h"
+
+/*
+ * Defined in `linux-user/main.c`. Holds global cannoli state and callback
+ * pointers into Rust
+ */
+extern Cannoli *cannoli;
+#endif /* CANNOLI */
+#endif /* CONFIG_CANNOLI */
+#endif /* CONFIG_LINUX_USER */
 
 /* XXX: make safe guess about sizes */
 #define MAX_OP_PER_INSTR 266

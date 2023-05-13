@@ -1167,6 +1167,12 @@ struct CPUPPCState {
     uint32_t tm_vscr;
     uint64_t tm_dscr;
     uint64_t tm_tar;
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 };
 
 #define SET_FIT_PERIOD(a_, b_, c_, d_)          \

@@ -186,6 +186,13 @@ typedef struct CPUSH4State {
     int in_sleep;		/* SR_BL ignored during sleep */
     memory_content *movcal_backup;
     memory_content **movcal_backup_tail;
+    
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 } CPUSH4State;
 
 /**

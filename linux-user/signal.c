@@ -25,6 +25,13 @@
 #include "trace.h"
 #include "signal-common.h"
 
+#ifdef CONFIG_LINUX_USER
+#ifdef CONFIG_CANNOLI
+#include "tcg/tcg.h"
+#endif /* CONFIG_CANNOLI */
+#endif /* CONFIG_LINUX_USER */
+
+
 static struct target_sigaction sigact_table[TARGET_NSIG];
 
 static void host_signal_handler(int host_signum, siginfo_t *info,
@@ -755,18 +762,34 @@ static void host_signal_handler(int host_signum, siginfo_t *info,
     target_siginfo_t tinfo;
     ucontext_t *uc = puc;
     struct emulated_sigtable *k;
+    
+ #ifdef CANNOLI
+    /* Save the register state in the cannoli C state */
+    env->cannoli_r12 = uc->uc_mcontext.gregs[REG_R12];
+    env->cannoli_r13 = uc->uc_mcontext.gregs[REG_R13];
+    env->cannoli_r14 = uc->uc_mcontext.gregs[REG_R14];
+#endif
+
 
     /* the CPU emulator uses some host signals to detect exceptions,
        we forward to it some signals */
     if ((host_signum == SIGSEGV || host_signum == SIGBUS)
         && info->si_code > 0) {
         if (cpu_signal_handler(host_signum, info, puc))
+#ifdef CANNOLI
+            /* Re-poison cannoli */
+            env->cannoli_r12 = CANNOLI_POISON; // due to changes between qemu 6 and qemu 7 we need to poison here
+#endif
             return;
     }
 
     /* get target signal number */
     sig = host_to_target_signal(host_signum);
     if (sig < 1 || sig > TARGET_NSIG)
+#ifdef CANNOLI
+        /* Re-poison cannoli */
+        env->cannoli_r12 = CANNOLI_POISON;
+#endif
         return;
     trace_user_host_signal(env, host_signum, sig);
 
@@ -798,6 +821,11 @@ static void host_signal_handler(int host_signum, siginfo_t *info,
 
     /* interrupt the virtual CPU as soon as possible */
     cpu_exit(thread_cpu);
+
+#ifdef CANNOLI
+    /* Re-poison cannoli */
+    env->cannoli_r12 = CANNOLI_POISON;
+#endif
 }
 
 /* do_sigaltstack() returns target values and errnos. */

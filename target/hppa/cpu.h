@@ -202,6 +202,13 @@ struct CPUHPPAState {
     /* ??? We should use a more intelligent data structure.  */
     hppa_tlb_entry tlb[HPPA_TLB_ENTRIES];
     uint32_t tlb_last;
+
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 };
 
 /**

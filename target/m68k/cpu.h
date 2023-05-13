@@ -148,6 +148,13 @@ typedef struct CPUM68KState {
 
     /* Fields from here on are preserved across CPU reset. */
     uint32_t features;
+    
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 } CPUM68KState;
 
 /*

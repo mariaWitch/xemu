@@ -105,9 +105,16 @@ static void tcg_out_ld(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg1,
 static bool tcg_out_mov(TCGContext *s, TCGType type, TCGReg ret, TCGReg arg);
 static void tcg_out_movi(TCGContext *s, TCGType type,
                          TCGReg ret, tcg_target_long arg);
+#ifdef CANNOLI
+static void tcg_out_op(TCGContext *s, TCGOpcode opc,
+                       const TCGArg args[TCG_MAX_OP_ARGS],
+                       const int const_args[TCG_MAX_OP_ARGS],
+                       const target_ulong pc);
+#else
 static void tcg_out_op(TCGContext *s, TCGOpcode opc,
                        const TCGArg args[TCG_MAX_OP_ARGS],
                        const int const_args[TCG_MAX_OP_ARGS]);
+#endif
 #if TCG_TARGET_MAYBE_vec
 static bool tcg_out_dup_vec(TCGContext *s, TCGType type, unsigned vece,
                             TCGReg dst, TCGReg src);
@@ -3692,7 +3699,15 @@ static void tcg_reg_alloc_dup(TCGContext *s, const TCGOp *op)
     }
 }
 
+/* Cannoli passes the PC of the opcode to the IL op */
+#ifdef CANNOLI
+static void tcg_reg_alloc_op(
+        TCGContext *s,
+        const TCGOp *op,
+        const target_ulong pc)
+#else
 static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
+#endif
 {
     const TCGLifeData arg_life = op->life;
     const TCGOpDef * const def = &tcg_op_defs[op->opc];
@@ -3859,7 +3874,12 @@ static void tcg_reg_alloc_op(TCGContext *s, const TCGOp *op)
         tcg_out_vec_op(s, op->opc, TCGOP_VECL(op), TCGOP_VECE(op),
                        new_args, const_args);
     } else {
+#ifdef CANNOLI
+        /* Cannoli passes the PC */
+        tcg_out_op(s, op->opc, new_args, const_args, pc);
+#else
         tcg_out_op(s, op->opc, new_args, const_args);
+#endif
     }
 
     /* move the outputs in the correct register if needed */
@@ -4084,6 +4104,21 @@ static void tcg_reg_alloc_call(TCGContext *s, TCGOp *op)
     } else {
         save_globals(s, allocated_regs);
     }
+    
+#ifdef CANNOLI
+    /* Save current cannoli registers to an accessible-by-C location as we may
+     * be calling something that longjmp()s from inside QEMU's JIT to outside
+     * and will need to flush the buffers. Thus, from C functions we have to
+     * have access to the current buffer state.
+     */
+    tcg_out_st(s, TCG_TYPE_PTR, TCG_REG_R12, TCG_AREG0,
+            offsetof(CPUArchState, cannoli_r12));
+    tcg_out_st(s, TCG_TYPE_PTR, TCG_REG_R13, TCG_AREG0,
+            offsetof(CPUArchState, cannoli_r13));
+    tcg_out_st(s, TCG_TYPE_PTR, TCG_REG_R14, TCG_AREG0,
+            offsetof(CPUArchState, cannoli_r14));
+#endif
+
 
 #ifdef CONFIG_TCG_INTERPRETER
     {
@@ -4113,6 +4148,23 @@ static void tcg_reg_alloc_call(TCGContext *s, TCGOp *op)
         ts->reg = reg;
         ts->mem_coherent = 0;
         s->reg_to_temp[reg] = ts;
+#ifdef CANNOLI
+	}
+
+    /* Poison the current C-side cannoli register state as we're about to
+     * track them in registers.
+     *
+     * We re-poison here as we're about to go back into the JIT as the call
+     * above returned back to us instead of longjmp()ing.
+     */
+	tcg_out_movi(s, TCG_TYPE_PTR, TCG_REG_RDI, CANNOLI_POISON);
+	tcg_out_st(s, TCG_TYPE_PTR, TCG_REG_RDI, TCG_AREG0,
+        	offsetof(CPUArchState, cannoli_r12));
+    for(i=0; i<nb_oargs; i++) {
+    	arg = op->args[i];
+        ts = arg_temp(arg);
+#endif
+
         if (NEED_SYNC_ARG(i)) {
             temp_sync(s, ts, allocated_regs, 0, IS_DEAD_ARG(i));
         } else if (IS_DEAD_ARG(i)) {
@@ -4352,6 +4404,11 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
     s->pool_labels = NULL;
 #endif
 
+#ifdef CANNOLI
+    // Current target program counter. Updated by insn_start instructions
+    target_ulong cannoli_pc = (target_ulong)0xdeaddeaddeaddeadULL;
+#endif // CANNOLI
+
     num_insns = -1;
     QTAILQ_FOREACH(op, &s->ops, link) {
         TCGOpcode opc = op->opc;
@@ -4386,6 +4443,71 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
 #endif
                 s->gen_insn_data[num_insns][i] = a;
             }
+            
+#ifdef CANNOLI
+            /* Record the PC of the target instruction */
+            cannoli_pc = s->gen_insn_data[num_insns][0];
+
+            /*
+             * First `insn_start` variable is the PC of the instruction.
+             * It may be encoded as 2 32-bit ints when emulating a
+             * larger-than-native architecture than the host of QEMU.
+             *
+             * We let the code above us handle that decoding, thus we just
+             * access the `gen_insn_data` ourselves
+             */
+            if(cannoli && cannoli->lift_instruction) {
+                /* Look ahead at the TCG instructions for this instruction. If
+                 * there is one that is a basic block end, we save that info
+                 * off. Here we're just looking for what could be branches.
+                 * All branches are basic block ends in TCG, some other things
+                 * are also BB ends, but that's okay, we won't have
+                 * false-negatives, only false-positives.
+                 */
+                TCGOp *tmp_op = op->link.tqe_next;
+                int bb_end_in_inst = 0;
+                while(tmp_op) {
+                    if(tmp_op->opc == INDEX_op_insn_start) {
+                        /* Stop processing when we get to the next instruction
+                         * start.
+                         */
+                        break;
+                    }
+
+                    /* Check if this instruction ends a basic block */
+                    TCGOpDef *def = &tcg_op_defs[tmp_op->opc];
+                    if(def->flags & TCG_OPF_BB_END) {
+                        bb_end_in_inst = 1;
+                    }
+
+                    /* Go to the next op */
+                    tmp_op = tmp_op->link.tqe_next;
+                }
+
+                /* Should be large enough for any reasonable shellcode */
+                uint8_t shellcode[1024];
+
+                
+
+                /* Invoke lifting callback */
+                size_t shellcode_size =
+                    cannoli->lift_instruction(
+                        cannoli_pc, bb_end_in_inst,
+                        shellcode, sizeof(shellcode));
+
+                /* Make sure the SO library author is not being naughty ;) */
+                if(shellcode_size > sizeof(shellcode)) {
+                    fprintf(stderr,
+                            "Cannoli: Instruction shellcode too large\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                /* Inject the shellcode into the JIT stream */
+                for(size_t ii = 0; ii < shellcode_size; ii++) {
+                    tcg_out8(s, shellcode[ii]);
+                }
+            }
+#endif
             break;
         case INDEX_op_discard:
             temp_dead(s, arg_temp(op->args[0]));
@@ -4408,7 +4530,11 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
             /* Note: in order to speed up the code, it would be much
                faster to have specialized register allocator functions for
                some common argument patterns */
+#ifdef CANNOLI
+            tcg_reg_alloc_op(s, op, cannoli_pc);
+#else
             tcg_reg_alloc_op(s, op);
+#endif
             break;
         }
 #ifdef CONFIG_DEBUG_TCG

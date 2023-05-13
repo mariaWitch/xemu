@@ -251,6 +251,13 @@ struct CPUAlphaState {
     uint32_t features;
     uint32_t amask;
     int implver;
+
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 };
 
 /**

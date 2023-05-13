@@ -98,6 +98,13 @@ typedef struct CPURXState {
     uint32_t ack_ipl;           /* execute ipl */
     float_status fp_status;
     qemu_irq ack;               /* Interrupt acknowledge */
+    
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 } CPURXState;
 
 /*

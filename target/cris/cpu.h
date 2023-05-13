@@ -165,6 +165,13 @@ typedef struct CPUCRISState {
 
         /* Members from load_info on are preserved across resets.  */
         void *load_info;
+
+#ifdef CONFIG_CANNOLI
+    /* Storage for Cannoli's internal register state */
+    uint64_t cannoli_r12;
+    uint64_t cannoli_r13;
+    uint64_t cannoli_r14;
+#endif
 } CPUCRISState;
 
 /**

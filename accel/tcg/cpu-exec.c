@@ -346,6 +346,10 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
     uintptr_t ret;
     TranslationBlock *last_tb;
     const void *tb_ptr = itb->tc.ptr;
+#ifdef CANNOLI
+    /* Poison the cannoli state before entering the JIT */
+    env->cannoli_r12 = CANNOLI_POISON;
+#endif
 
     log_cpu_exec(itb->pc, cpu, itb);
 

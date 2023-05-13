@@ -22,6 +22,12 @@
 #include "sysemu/tcg.h"
 #include "exec/exec-all.h"
 
+#ifdef CONFIG_LINUX_USER
+#ifdef CONFIG_CANNOLI
+#include "tcg/tcg.h"
+#endif /* CONFIG_CANNOLI */
+#endif /* CONFIG_LINUX_USER */
+
 bool tcg_allowed;
 
 /* exit the current TB, but without causing any exception to be raised */
@@ -63,6 +69,16 @@ void cpu_reloading_memory_map(void)
 
 void cpu_loop_exit(CPUState *cpu)
 {
+#ifdef CANNOLI
+    /* If we ever exit the CPU loop, perform a JIT exit */
+    if(cannoli && cannoli->jit_exit) {
+        CPUArchState *env = cpu->env_ptr;
+
+        cannoli->jit_exit(
+                env->cannoli_r12, env->cannoli_r13, env->cannoli_r14);
+    }
+#endif
+
     /* Undo the setting in cpu_tb_exec.  */
     cpu->can_do_io = 1;
     siglongjmp(cpu->jmp_env, 1);
